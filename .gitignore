@@ -1,0 +1,90 @@
+# =====================================================================
+# ArchPredict — .gitignore
+# Synthetic and real geospatial data are excluded by default. Scripts
+# regenerate synthetic data; real data lives outside the repo.
+# =====================================================================
+
+# ---- Data (regenerate from scripts or fetch externally) -------------
+# Note: use data/* (not data/) so git still descends into the directory
+# and the !whitelist exceptions below actually take effect.
+data/*
+!data/.gitkeep
+!data/README.md
+
+# ---- Trained models and ML artefacts --------------------------------
+*.pkl
+*.joblib
+*.archpredict
+models/
+runs/
+mlruns/
+
+# ---- Python ---------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual envs
+.venv/
+venv/
+env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# ---- QGIS -----------------------------------------------------------
+*.qgz~
+*.qgs~
+*.qgz.bak
+*.qgs.bak
+*.aux.xml
+
+# ---- Geodata side-files (when raw data is in the repo for some reason)
+*.tif.aux.xml
+*.shp.aux.xml
+
+# ---- IDE / editor ---------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ---- OS -------------------------------------------------------------
+.directory
+.Trash-*
+
+# ---- Misc -----------------------------------------------------------
+*.log
+.env
+.env.local
