@@ -16,6 +16,7 @@ data/*
 *.joblib
 *.archpredict
 models/
+reports/
 runs/
 mlruns/
 

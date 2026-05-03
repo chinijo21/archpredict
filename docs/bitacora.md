@@ -137,3 +137,108 @@ cualquier máquina con seed 42. Todo en el repo. Próximo paso: el
 primer Random Forest, con spatial block CV desde el principio (NO
 k-fold estándar — esto está marcado en rojo en el roadmap del reporte
 y lo apunto aquí también para no olvidarlo nunca).
+
+---
+
+## 27 abr 2026
+
+Empiezo a leer en serio la sección 5 del reporte. Quiero pelearme con
+el tema del cross-validation antes de escribir nada, porque ya he visto
+demasiados papers donde se reportan AUCs preciosos de 0.95 y luego en
+producción no aciertan ni una. La regla del proyecto (no k-fold
+estándar) viene de ahí.
+
+El argumento es simple: los sitios están agrupados espacialmente —
+porque los humanos no se asentaban uniformemente — entonces si haces un
+random split, tu test set acaba con puntos que están a 200 m de puntos
+del training. El modelo no está prediciendo en zonas nuevas, está
+prácticamente interpolando entre vecinos. El reporte cuantifica el
+sesgo: AUC inflado entre 0.10 y 0.25 frente a la performance real
+cuando se aplica a un área que el modelo no ha visto.
+
+La alternativa: dividir el área en bloques, cada bloque entero a un
+fold, así el test queda geográficamente separado del training. Lo que
+no me queda claro todavía es el tamaño de bloque adecuado.
+
+## 28 abr 2026
+
+Sigo dándole vueltas al tamaño de bloque. La literatura "purista"
+sugiere derivarlo del rango de autocorrelación del residuo del modelo
+(variograma del residuo y leer la distancia donde se estabiliza), pero
+eso requiere un primer ajuste del modelo con un CV cualquiera, calcular
+residuos, hacer el variograma, y solo entonces redefinir bloques. Es un
+proceso iterativo perfectamente válido pero que para una primera
+iteración es overkill.
+
+El reporte sugiere "5x la distancia media al vecino más cercano" como
+default. Razonable. Pero hay un detalle que me preocupa con N pequeño y
+sitios muy clusterizados: la NN media va a ser pequeña porque la regla
+los pone cerca del agua. Si pongo bloques de 5×NN-mean voy a tener
+bloques pequeños, y eso vacía el sentido de la separación geográfica.
+
+Para el sintético con 80 sitios y AOI 15×15 km, voy a calcular la NN
+media a posteriori (informativa) pero usar un suelo absoluto. Si pongo
+bloques de 3 km tengo 5×5 = 25 bloques, lo justo para 5-fold. Para
+datos reales esto es un parámetro a tunear consciente.
+
+## 30 abr 2026
+
+Implementación de la rejilla. Cada punto cae en su bloque por
+`floor((x - xmin) / block_size)` (y lo mismo en y). Bloque
+identificado con un id único `bx*10000 + by` por si en datos reales
+llegan a 4 dígitos.
+
+Los folds: barajo los IDs de bloque con seed 42 y reparto round-robin a
+los 5 folds. Round-robin tras shuffle balancea automáticamente el
+número de bloques por fold. Si no es divisible, unos folds tienen un
+bloque más que otros, sin más drama.
+
+Cargué los puntos coloreados por fold en QGIS — se ve la separación
+espacial, cada fold cubre franjas distintas. Buena pinta.
+
+## 1 may 2026
+
+Bucle de CV implementado. Entreno un RF con los hiperparámetros del
+reporte (500 árboles, sqrt features, depth completo, leaf=5, balanced)
+sobre 4/5 de los folds y predigo sobre el restante. Para AUC uso el
+estándar de sklearn. Para TSS uso `roc_curve` y tomo `max(tpr - fpr)`,
+que es algebraicamente equivalente a `max(sensitivity + specificity -
+1)` y evita tener que iterar manualmente sobre umbrales.
+
+Una decisión defensiva que añadí mientras programaba: si un fold tiene
+0 elementos de cualquier clase en su test set (cosa improbable con
+N=80 pero plausible con datos reales sparse), skipeo el fold y reporto
+warning en log. El summary solo agrega los folds evaluados. Mejor que
+explote AUC por dividir entre cero.
+
+## 2 may 2026
+
+Run completo. El RF aprende la regla razonablemente bien — cosa
+esperable porque los predictores son justo los que generan la regla.
+Métricas detalladas en `reports/cv_results_synthetic.json`: composición
+por fold, AUC y TSS por fold, media y desviación.
+
+Detalle de reproducibilidad que apunto aquí porque me ha llevado un
+rato decidirlo: junto con el modelo serializado guardo metadata en el
+mismo `.joblib`: versión de sklearn, hiperparámetros, SHA256 (truncado
+a 16 caracteres) del CSV de entrenamiento, fecha UTC del entrenamiento
+y la semilla. Si en seis meses tengo que demostrar a un reviewer que el
+modelo X corresponde al dataset Y, esto lo deja blindado. El reporte lo
+exige en la sección 6.5 (reproducibility report).
+
+## 3 may 2026
+
+Cierro el módulo. Modelo final entrenado sobre los 160 puntos completos
+en `models/rf_synthetic.joblib`, métricas del CV en su JSON. Las
+carpetas `models/` y `reports/` van al gitignore — son artefactos
+regenerables desde el script con seed 42. El que clone el repo lo
+recompila en un minuto.
+
+Próximo paso (script 06): aplicar el modelo al stack de predictores
+para generar el ráster de probabilidad sobre todo el AOI. Y, regla
+crítica del proyecto y exigencia explícita del reporte (sección 6.1),
+junto al ráster de probabilidad genero el de incertidumbre como
+desviación estándar de las predicciones de los árboles individuales
+del bosque. Una probabilidad sin barra de error es una probabilidad
+que se publica con sobreconfianza, y es justo lo que el reporte critica
+de la práctica habitual del campo.
